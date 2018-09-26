@@ -119,25 +119,62 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
       }
     }
     else if (partition != null) {
+      // create a temporary arraylist that we'll use if we glom queries
+      ArrayList<GenomicsDBQueryInfo> glomQuerys = new ArrayList<GenomicsDBQueryInfo>();
       while (qIndex < queryRangeList.size() && partition != null) {
         GenomicsDBQueryInfo queryRange = queryRangeList.get(qIndex);
   
         // advance partition index if needed
         // i.e., advance till we find the partition that contains the query begin position
-        while ((pIndex + 1) < partitionsList.size() && partition.getBeginPosition() < queryRange.getBeginPosition()) {
+        while ((pIndex + 1) < partitionsList.size() && 
+                partitionsList.get(pIndex+1).getBeginPosition() <= queryRange.getBeginPosition()) {
+          // add glommed queries to inputsplit using previous parition since
+          // we're moving on to new partitions
+          if (!glomQuerys.isEmpty()) {
+            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+            glomQuerys.clear();
+          }
           pIndex++;
-  	  partition = partitionsList.get(pIndex);
-        }
-        if (partition.getBeginPosition() > queryRange.getBeginPosition()) {
-          pIndex--;
   	  partition = partitionsList.get(pIndex);
         }
   
         long queryBlockSize = queryRange.getEndPosition() - queryRange.getBeginPosition() + 1;
         if (queryBlockSize < goalBlockSize) {
-          inputSplits.add(new GenomicsDBInputSplit(partition, queryRange));
+          // create glommed inputsplit
+  	  if ((pIndex + 1) < partitionsList.size() && 
+               queryRange.getEndPosition() >= partitionsList.get(pIndex+1).getBeginPosition()) {
+            // if current query spans two partitions then add to previous inputsplit as well
+            if (queryRange.getBeginPosition() < partitionsList.get(pIndex+1).getBeginPosition()) {
+              glomQuerys.add(queryRange);
+            }
+            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+            glomQuerys.clear();
+  	    // if this queryBlock spans multiple partitions, need to add those as splits as well
+  	    // can use the same ArrayList of queries since each inputsplit will only care
+  	    // about the section that is relevant to its partition
+            glomQuerys.add(queryRange);
+    	    while ((pIndex + 1) < partitionsList.size() &&
+                    queryRange.getEndPosition() >= partitionsList.get(pIndex+1).getBeginPosition()) {
+    	      pIndex++;
+              partition = partitionsList.get(pIndex);
+    	      inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+    	    }
+            glomQuerys.clear();
+          }
+          else {
+            // could do more smarts here to not glom?
+            // maybe keep a running tally of the glommed range and compare that against
+            // goalBlockSize. however, that really only matters in the case where
+            // users choose to query a very large number of snps individually instead
+            // of querying the entire region...probably not worth worrying about that
+            glomQuerys.add(queryRange);
+          }
         }
         else {
+          if (!glomQuerys.isEmpty()) {
+            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+            glomQuerys.clear();
+          }
           // bigger than goalBlockSize, so break up into "query chunks"
   
   	  long queryBlockStart = queryRange.getBeginPosition();
@@ -145,25 +182,53 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
   	  while (queryBlockStart < queryRange.getEndPosition()) {
             long blockSize = (queryBlockSize > (goalBlockSize+queryBlockMargin)) ? goalBlockSize : queryBlockSize;
   	    GenomicsDBQueryInfo queryBlock = new GenomicsDBQueryInfo(queryBlockStart, queryBlockStart + blockSize - 1);
-  	    inputSplits.add(new GenomicsDBInputSplit(partition, queryBlock));
+            glomQuerys.add(queryBlock);
+  	    inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
   
   	    // if this queryBlock spans multiple partitions, need to add those as splits as well
   	    while ((pIndex + 1) < partitionsList.size() &&
                     queryBlockStart + blockSize - 1 >= partitionsList.get(pIndex+1).getBeginPosition()) {
   	      pIndex++;
               partition = partitionsList.get(pIndex);
-  	      inputSplits.add(new GenomicsDBInputSplit(partition, queryBlock));
+  	      inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
   	    }
+            glomQuerys.clear();
   	    queryBlockStart += blockSize;
   	    queryBlockSize -= blockSize;
   	  }
         }
         qIndex++;
       }
+      // if we still have glommed queries that haven't been assigned to
+      // an inputsplit, they go with the final partition
+      if(!glomQuerys.isEmpty()) {
+        inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+      }
     }
     return inputSplits;
   }
 
+  /**
+   * Creates string of query ranges for query json
+   *
+   * @param qList ArrayList of GenomicsDBQueryInfo
+   * @return Returns string of query ranges
+   */
+  String getQueryRangesString(ArrayList<GenomicsDBQueryInfo> qList) {
+    String queryRanges = "[[";
+    for (GenomicsDBQueryInfo q: qList) {
+      if (queryRanges != "[[") {
+        queryRanges += ",";
+      }
+      if (q.getBeginPosition() == q.getEndPosition()) {
+        queryRanges += q.getBeginPosition();
+      } else {
+        queryRanges += "[" + q.getBeginPosition() + "," + q.getEndPosition() + "]";
+      }
+    }
+    queryRanges += "]]";
+    return queryRanges;
+  }
   /**
    * Creates tmp query file based on inputSplit and existing query file
    *
@@ -180,13 +245,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
     String amendedQuery = "{\n";
     amendedQuery += indentString + "\"workspace\": \""+inputSplit.getPartitionInfo().getWorkspace()+"\",\n";
     amendedQuery += indentString + "\"array\": \""+inputSplit.getPartitionInfo().getArrayName()+"\",\n";
-    if (inputSplit.getQueryInfo().getBeginPosition() == inputSplit.getQueryInfo().getEndPosition()) {
-      amendedQuery += indentString + "\"query_column_ranges\": [["+inputSplit.getQueryInfo().getBeginPosition()+"]]";
-    }
-    else {
-      amendedQuery += indentString + "\"query_column_ranges\": [[["+inputSplit.getQueryInfo().getBeginPosition()+","
-	      +inputSplit.getQueryInfo().getEndPosition()+"]]]";
-    }
+    amendedQuery += indentString + "\"query_column_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
 
     try {
 
