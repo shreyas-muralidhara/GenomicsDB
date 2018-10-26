@@ -70,8 +70,8 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
 
   public void write(DataOutput dataOutput) throws IOException {
     if (this.partition != null) {
-      dataOutput.writeBoolean(this.isColumnPartitioned);
       dataOutput.writeLong(this.partition.getBeginPosition());
+      dataOutput.writeBoolean(this.isColumnPartitioned);
       Text.writeString(dataOutput, this.partition.getWorkspace());
       Text.writeString(dataOutput, this.partition.getArrayName());
       String vcfOutput = this.partition.getVcfOutputFileName();

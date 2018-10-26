@@ -253,7 +253,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
     String indentString = "    ";
     String amendedQuery = "{\n";
     amendedQuery += indentString + "\"workspace\": \""+inputSplit.getPartitionInfo().getWorkspace()+"\",\n";
-    amendedQuery += indentString + "\"array\": \""+inputSplit.getPartitionInfo().getArrayName()+"\",\n";
+    amendedQuery += indentString + "\"array\": \""+inputSplit.getPartitionInfo().getArrayName()+"\"";
 
     try {
 
@@ -269,14 +269,14 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
       }
   
       if (inputSplit.isColumnPartitioned()) {
-        amendedQuery += indentString + "\"query_column_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
+        amendedQuery += ",\n" + indentString + "\"query_column_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
       }
       else if (obj.containsKey("query_column_ranges")) {
         amendedQuery += ",\n" + indentString + "\"query_column_ranges\": "+obj.get("query_column_ranges").toString()+"";
       }
 
       if (!inputSplit.isColumnPartitioned() && inputSplit.getQueryInfoList() != null) {
-        amendedQuery += indentString + "\"query_row_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
+        amendedQuery += ",\n" + indentString + "\"query_row_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
       }
       else if (obj.containsKey("query_row_ranges")) {
         amendedQuery += ",\n" + indentString + "\"query_row_ranges\": "+obj.get("query_row_ranges").toString()+"";
