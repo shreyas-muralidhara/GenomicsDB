@@ -57,6 +57,7 @@ public class GenomicsDBConfiguration extends Configuration implements Serializab
 
   private Boolean produceCombinedVCF = false;
   private Boolean produceTileDBArray = false;
+  private Boolean partitionedByCol = null;
   private Integer segmentSize = 1000;
   private Integer nCellsPerTile = 1000;
 
@@ -166,14 +167,28 @@ public class GenomicsDBConfiguration extends Configuration implements Serializab
     return QueryBlockSizeMargin;
   }
 
-  private void readColumnPartitions(JSONObject obj) throws ParseException {
+  /**
+   * Returns true if GenomicsDB arrays are column partitioned, false if they are row partitioned
+   * @return Returns boolean value stating whether GenomicsDB arrays are column partitioned
+   */
+  boolean isColumnPartitioned() {
+    return partitionedByCol;
+  }
+
+  private void readPartitions(JSONObject obj) throws ParseException {
     if (partitionInfoList==null) {
       partitionInfoList = new ArrayList<>();
     }
-    JSONArray colPar = (JSONArray)obj.get("column_partitions");
-    if(colPar == null)
-      throw new RuntimeException("Could not find attribute \"column_partitions\" in the JSON configuration");
-    Iterator<JSONObject> it = colPar.iterator();
+    JSONArray partObj = (JSONArray)obj.get("column_partitions");
+    partitionedByCol = true;
+    if(partObj == null) {
+      partObj = (JSONArray)obj.get("row_partitions");
+      partitionedByCol = false;
+      if(partObj == null) {
+        throw new RuntimeException("Could not find attribute \"column_partitions\" or \"row_partitions\" in the JSON configuration");
+      }
+    }
+    Iterator<JSONObject> it = partObj.iterator();
     while (it.hasNext()) {
       JSONObject obj0 = (JSONObject)it.next();
       String workspace = null, array = null, vcf_output_filename = null;
@@ -187,32 +202,47 @@ public class GenomicsDBConfiguration extends Configuration implements Serializab
   }
 
   private void readQueryRanges(JSONObject obj) throws ParseException {
-    if (queryInfoList==null) {
-      queryInfoList = new ArrayList<>();
-    }
-    // query_column_ranges is a list of lists; we'll only grab first one
+    // this function assumes that readPartition has been called first
+    // in order to ascertain if genomicsdb arrays are partitioned by 
+    // column or row
+    // query_column_ranges, query_row_ranges is a list of lists; we'll only grab first one
     // Assuming here that query file to Spark interface doesn't have a notion
     // of trying to assign certain queries to certain processes or ranks
-    assert obj.containsKey("query_column_ranges");
-    JSONArray array = (JSONArray)obj.get("query_column_ranges");
-    JSONArray firstList = (JSONArray)array.get(0);
-    for (Object currElement : firstList) {
-      long start = 0, end = 0;
-      if (currElement instanceof JSONArray) {
-        JSONArray val = (JSONArray)currElement;
-	assert val.size() == 2;
-        start = (long)val.get(0);
-        end = (long)val.get(1);
+    if (partitionedByCol == null) {
+      throw new RuntimeException("Unable to know if array are partitioned by column or row. Please call readPartition first.");
+    }
+    JSONArray array;
+    if (partitionedByCol == true) {
+      assert obj.containsKey("query_column_ranges");
+      array = (JSONArray)obj.get("query_column_ranges");
+    }
+    else {
+      // query_row_ranges is optional, so array could be null 
+      array = (JSONArray)obj.get("query_row_ranges");
+    }
+    if (array != null) {
+      if (queryInfoList==null) {
+        queryInfoList = new ArrayList<>();
       }
-      else if (currElement instanceof JSONObject) {
-        JSONObject val = (JSONObject)currElement;
-	assert val.size() == 1;
-        start = end = (long)val.get(0);
+      JSONArray firstList = (JSONArray)array.get(0);
+      for (Object currElement : firstList) {
+        long start = 0, end = 0;
+        if (currElement instanceof JSONArray) {
+          JSONArray val = (JSONArray)currElement;
+  	assert val.size() == 2;
+          start = (long)val.get(0);
+          end = (long)val.get(1);
+        }
+        else if (currElement instanceof JSONObject) {
+          JSONObject val = (JSONObject)currElement;
+  	assert val.size() == 1;
+          start = end = (long)val.get(0);
+        }
+        else {
+          start = end = (long)currElement;
+        }
+        queryInfoList.add(new GenomicsDBQueryInfo(start, end));
       }
-      else {
-        start = end = (long)currElement;
-      }
-      queryInfoList.add(new GenomicsDBQueryInfo(start, end));
     }
 
     if(obj.containsKey("query_block_size")) {
@@ -239,7 +269,7 @@ public class GenomicsDBConfiguration extends Configuration implements Serializab
       JSONObject obj = (JSONObject)parser.parse(jsonReader);
 
       if (jsonType.equals(LOADERJSON)) {
-        readColumnPartitions(obj);
+        readPartitions(obj);
       }
       else if (jsonType.equals(QUERYJSON)) {
         readQueryRanges(obj);

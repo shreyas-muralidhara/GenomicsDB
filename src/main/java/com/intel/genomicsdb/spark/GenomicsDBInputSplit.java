@@ -40,6 +40,7 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
   String[] hosts;
   GenomicsDBPartitionInfo partition;
   ArrayList<GenomicsDBQueryInfo> queryRangeList;
+  boolean isColumnPartitioned;
   long length = 0;
 
   Logger logger = Logger.getLogger(GenomicsDBInputSplit.class);
@@ -55,9 +56,10 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
     hosts[0] = loc;
   }
 
-  public GenomicsDBInputSplit(GenomicsDBPartitionInfo partition, ArrayList<GenomicsDBQueryInfo> queryRangeList) {
+  public GenomicsDBInputSplit(GenomicsDBPartitionInfo partition, ArrayList<GenomicsDBQueryInfo> queryRangeList, boolean colPart) {
     this.partition = new GenomicsDBPartitionInfo(partition);
     this.queryRangeList = new ArrayList<GenomicsDBQueryInfo>(queryRangeList);
+    this.isColumnPartitioned = colPart;
     // TODO: populate hosts if partition workspace is HDFS or S3?
     // this would help with locality
   }
@@ -68,6 +70,7 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
 
   public void write(DataOutput dataOutput) throws IOException {
     if (this.partition != null) {
+      dataOutput.writeBoolean(this.isColumnPartitioned);
       dataOutput.writeLong(this.partition.getBeginPosition());
       Text.writeString(dataOutput, this.partition.getWorkspace());
       Text.writeString(dataOutput, this.partition.getArrayName());
@@ -78,10 +81,15 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
       else {
         Text.writeString(dataOutput, vcfOutput); 
       }
-      dataOutput.writeInt(queryRangeList.size());
-      for(GenomicsDBQueryInfo q: this.queryRangeList) {
-        dataOutput.writeLong(q.getBeginPosition());
-        dataOutput.writeLong(q.getEndPosition());
+      if (queryRangeList == null) {
+        dataOutput.writeInt(0);
+      }
+      else {
+        dataOutput.writeInt(queryRangeList.size());
+        for(GenomicsDBQueryInfo q: this.queryRangeList) {
+          dataOutput.writeLong(q.getBeginPosition());
+          dataOutput.writeLong(q.getEndPosition());
+        }
       }
     }
     else {
@@ -97,6 +105,7 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
     // if begin position is less than zero we don't leverage
     // partition info to create inputsplits (legacy posix fs case)
     if (_begin >= 0) {
+      isColumnPartitioned = dataInput.readBoolean();
       String _workspace = Text.readString(dataInput);
       String _array = Text.readString(dataInput);
       String _vcfOutput = Text.readString(dataInput);
@@ -104,11 +113,16 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
         _vcfOutput = null;
       partition = new GenomicsDBPartitionInfo(_begin, _workspace, _array, _vcfOutput);
       int qListLength = dataInput.readInt();
-      queryRangeList = new ArrayList<GenomicsDBQueryInfo>(qListLength);
-      for(int i=0; i<qListLength; i++) {
-        long begin = dataInput.readLong();
-        long end = dataInput.readLong();
-        queryRangeList.add(new GenomicsDBQueryInfo(begin, end));
+      if (qListLength > 0) {
+        queryRangeList = new ArrayList<GenomicsDBQueryInfo>(qListLength);
+        for(int i=0; i<qListLength; i++) {
+          long begin = dataInput.readLong();
+          long end = dataInput.readLong();
+          queryRangeList.add(new GenomicsDBQueryInfo(begin, end));
+        }
+      }
+      else {
+        queryRangeList = null;
       }
     }
     length = dataInput.readLong();
@@ -124,6 +138,10 @@ public class GenomicsDBInputSplit extends InputSplit implements Writable {
 
   public ArrayList<GenomicsDBQueryInfo> getQueryInfoList() {
     return queryRangeList;
+  }
+
+  public boolean isColumnPartitioned() {
+    return isColumnPartitioned;
   }
 
   /**

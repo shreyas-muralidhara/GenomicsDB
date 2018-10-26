@@ -118,9 +118,18 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
         inputSplits.add(new GenomicsDBInputSplit(hosts.get(i)));
       }
     }
+    else if (queryRangeList == null) {
+      // queryRangeList can be null if arrays are row partitioned
+      // which would mean query all rows
+      assert(!genomicsDBConfiguration.isColumnPartitioned());
+      for (int i=0; i<partitionsList.size(); i++) {
+        inputSplits.add(new GenomicsDBInputSplit(partitionsList.get(i), null, false));
+      }
+    }
     else if (partition != null) {
       // create a temporary arraylist that we'll use if we glom queries
       ArrayList<GenomicsDBQueryInfo> glomQuerys = new ArrayList<GenomicsDBQueryInfo>();
+      boolean colPartFlag = genomicsDBConfiguration.isColumnPartitioned();
       while (qIndex < queryRangeList.size() && partition != null) {
         GenomicsDBQueryInfo queryRange = queryRangeList.get(qIndex);
   
@@ -131,7 +140,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
           // add glommed queries to inputsplit using previous parition since
           // we're moving on to new partitions
           if (!glomQuerys.isEmpty()) {
-            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
             glomQuerys.clear();
           }
           pIndex++;
@@ -147,7 +156,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
             if (queryRange.getBeginPosition() < partitionsList.get(pIndex+1).getBeginPosition()) {
               glomQuerys.add(queryRange);
             }
-            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
             glomQuerys.clear();
   	    // if this queryBlock spans multiple partitions, need to add those as splits as well
   	    // can use the same ArrayList of queries since each inputsplit will only care
@@ -157,7 +166,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
                     queryRange.getEndPosition() >= partitionsList.get(pIndex+1).getBeginPosition()) {
     	      pIndex++;
               partition = partitionsList.get(pIndex);
-    	      inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+    	      inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
     	    }
             glomQuerys.clear();
           }
@@ -172,7 +181,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
         }
         else {
           if (!glomQuerys.isEmpty()) {
-            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+            inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
             glomQuerys.clear();
           }
           // bigger than goalBlockSize, so break up into "query chunks"
@@ -183,14 +192,14 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
             long blockSize = (queryBlockSize > (goalBlockSize+queryBlockMargin)) ? goalBlockSize : queryBlockSize;
   	    GenomicsDBQueryInfo queryBlock = new GenomicsDBQueryInfo(queryBlockStart, queryBlockStart + blockSize - 1);
             glomQuerys.add(queryBlock);
-  	    inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+  	    inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
   
   	    // if this queryBlock spans multiple partitions, need to add those as splits as well
   	    while ((pIndex + 1) < partitionsList.size() &&
                     queryBlockStart + blockSize - 1 >= partitionsList.get(pIndex+1).getBeginPosition()) {
   	      pIndex++;
               partition = partitionsList.get(pIndex);
-  	      inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+  	      inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
   	    }
             glomQuerys.clear();
   	    queryBlockStart += blockSize;
@@ -202,7 +211,7 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
       // if we still have glommed queries that haven't been assigned to
       // an inputsplit, they go with the final partition
       if(!glomQuerys.isEmpty()) {
-        inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys));
+        inputSplits.add(new GenomicsDBInputSplit(partition, glomQuerys, colPartFlag));
       }
     }
     return inputSplits;
@@ -245,7 +254,6 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
     String amendedQuery = "{\n";
     amendedQuery += indentString + "\"workspace\": \""+inputSplit.getPartitionInfo().getWorkspace()+"\",\n";
     amendedQuery += indentString + "\"array\": \""+inputSplit.getPartitionInfo().getArrayName()+"\",\n";
-    amendedQuery += indentString + "\"query_column_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
 
     try {
 
@@ -260,9 +268,20 @@ public class GenomicsDBInputFormat<VCONTEXT extends Feature, SOURCE>
         throw e;
       }
   
-      if (obj.containsKey("query_row_ranges")) {
+      if (inputSplit.isColumnPartitioned()) {
+        amendedQuery += indentString + "\"query_column_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
+      }
+      else if (obj.containsKey("query_column_ranges")) {
+        amendedQuery += ",\n" + indentString + "\"query_column_ranges\": "+obj.get("query_column_ranges").toString()+"";
+      }
+
+      if (!inputSplit.isColumnPartitioned() && inputSplit.getQueryInfoList() != null) {
+        amendedQuery += indentString + "\"query_row_ranges\": " + getQueryRangesString(inputSplit.getQueryInfoList());
+      }
+      else if (obj.containsKey("query_row_ranges")) {
         amendedQuery += ",\n" + indentString + "\"query_row_ranges\": "+obj.get("query_row_ranges").toString()+"";
       }
+
       if (obj.containsKey("vid_mapping_file")) {
         amendedQuery += ",\n" + indentString + "\"vid_mapping_file\": \""+obj.get("vid_mapping_file").toString()+"\"";
       }
