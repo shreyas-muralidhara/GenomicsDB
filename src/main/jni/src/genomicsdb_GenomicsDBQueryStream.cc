@@ -23,6 +23,7 @@
 #include "genomicsdb_GenomicsDBQueryStream.h"
 #include "genomicsdb_bcf_generator.h"
 #include "genomicsdb_export_config.pb.h"
+#include "error.h"
 
 #define VERIFY_OR_THROW(X) if(!(X)) throw GenomicsDBJNIException(#X);
 #define GET_BCF_READER_FROM_HANDLE(X) (reinterpret_cast<GenomicsDBBCFGenerator*>(static_cast<std::uintptr_t>(X)))
@@ -48,6 +49,8 @@ JNIEXPORT jlong JNICALL Java_org_genomicsdb_reader_GenomicsDBQueryStream_jniGeno
   try {
     query_config_pb.ParseFromArray(reinterpret_cast<void*>(bufferElems), len);
     //Create object
+    // this should throw an error that says what field is wrong
+    // (ie. array not valid for workspace /x/y/z
     bcf_reader_obj = new GenomicsDBBCFGenerator(loader_configuration_file_cstr, &query_config_pb,
         chr_cstr, start, end,
         rank, buffer_capacity, segment_size, output_format,
@@ -55,6 +58,8 @@ JNIEXPORT jlong JNICALL Java_org_genomicsdb_reader_GenomicsDBQueryStream_jniGeno
         is_bcf && use_missing_values_only_not_vector_end, is_bcf && keep_idx_fields_in_bcf_header);
   }
   catch (...) {
+    GENOMICSDB_ERROR(std::string("Error initializing input stream: "), \
+      std::string("Likely due to an empty reading frame or incorrect fields in the loader file."), std::string("TODO"));
     bcf_reader_obj = NULL;
   }
   //Cleanup
@@ -95,23 +100,30 @@ JNIEXPORT jint JNICALL Java_org_genomicsdb_reader_GenomicsDBQueryStream_jniGenom
   if(bcf_reader_obj == 0)
     return 0;
   auto total_num_bytes_read = 0ull;
-  while(total_num_bytes_read < static_cast<uint64_t>(n) && !(bcf_reader_obj->end()))
-  {
-    auto& buffer_obj = bcf_reader_obj->get_read_batch();
-    auto num_bytes_to_copy = std::min<size_t>(buffer_obj.get_num_remaining_bytes(), static_cast<size_t>(n)-total_num_bytes_read);
-    //Handle this as a special case as read_and_advance will not advance anything if num_bytes_to_copy == 0u
-    if(num_bytes_to_copy == 0u)
-      num_bytes_to_copy = SIZE_MAX;     //forces jni_bcf_reader to produce the next batch of records
-    else
+  try{
+    while(total_num_bytes_read < static_cast<uint64_t>(n) && !(bcf_reader_obj->end()))
     {
-      env->SetByteArrayRegion(java_byte_array, offset+total_num_bytes_read, num_bytes_to_copy,
+      auto& buffer_obj = bcf_reader_obj->get_read_batch();
+      auto num_bytes_to_copy = std::min<size_t>(buffer_obj.get_num_remaining_bytes(), static_cast<size_t>(n)-total_num_bytes_read);
+      //Handle this as a special case as read_and_advance will not advance anything if num_bytes_to_copy == 0u
+      if(num_bytes_to_copy == 0u)
+        num_bytes_to_copy = SIZE_MAX;     //forces jni_bcf_reader to produce the next batch of records
+      else
+      {
+        env->SetByteArrayRegion(java_byte_array, offset+total_num_bytes_read, num_bytes_to_copy,
           reinterpret_cast<const jbyte*>(buffer_obj.get_pointer_at_read_position()));
-      total_num_bytes_read += num_bytes_to_copy;
+        total_num_bytes_read += num_bytes_to_copy;
+      }
+      bcf_reader_obj->read_and_advance(0, 0u, num_bytes_to_copy);
     }
-    bcf_reader_obj->read_and_advance(0, 0u, num_bytes_to_copy);
+    return total_num_bytes_read;
+  }catch(...){
+    GENOMICSDB_ERROR(std::string("Error reading from GenomicsDB:"), \
+      std::string("Issue copying data from BCF reader."), std::string("TODO"));
+    return 0;
   }
-  return total_num_bytes_read;
 }
+
 
 JNIEXPORT jlong JNICALL Java_org_genomicsdb_reader_GenomicsDBQueryStream_jniGenomicsDBSkip
   (JNIEnv* env, jobject curr_obj, jlong handle, jlong n)
