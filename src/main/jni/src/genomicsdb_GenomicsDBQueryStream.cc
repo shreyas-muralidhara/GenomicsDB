@@ -51,6 +51,8 @@ JNIEXPORT jlong JNICALL Java_org_genomicsdb_reader_GenomicsDBQueryStream_jniGeno
     //Create object
     // this should throw an error that says what field is wrong
     // (ie. array not valid for workspace /x/y/z
+    // further, if an attribute field is not found it should log warning that the field will not be 
+    // returned in the query, but not error out
     bcf_reader_obj = new GenomicsDBBCFGenerator(loader_configuration_file_cstr, &query_config_pb,
         chr_cstr, start, end,
         rank, buffer_capacity, segment_size, output_format,
@@ -97,10 +99,10 @@ JNIEXPORT jint JNICALL Java_org_genomicsdb_reader_GenomicsDBQueryStream_jniGenom
   (JNIEnv* env, jobject curr_obj, jlong handle, jbyteArray java_byte_array, jint offset, jint n)
 {
   auto bcf_reader_obj = GET_BCF_READER_FROM_HANDLE(handle);
-  if(bcf_reader_obj == 0)
-    return 0;
-  auto total_num_bytes_read = 0ull;
   try{
+    if(bcf_reader_obj == 0)
+      return 0;
+    auto total_num_bytes_read = 0ull;
     while(total_num_bytes_read < static_cast<uint64_t>(n) && !(bcf_reader_obj->end()))
     {
       auto& buffer_obj = bcf_reader_obj->get_read_batch();

@@ -23,6 +23,7 @@
 #include "variant_operations.h"
 #include "query_variants.h"
 #include "genomicsdb_multid_vector_field.h"
+#include "error.h"
 
 #ifndef HTSDIR
 uint32_t bcf_float_missing    = 0x7F800001;
@@ -211,25 +212,30 @@ void VariantOperations::merge_alt_alleles(const Variant& variant,
 void VariantOperations::remap_GT_field(const std::vector<int>& input_GT, std::vector<int>& output_GT,
                                        const CombineAllelesLUT& alleles_LUT, const uint64_t input_call_idx, const unsigned num_merged_alleles, const bool NON_REF_exists,
                                        const FieldLengthDescriptor& length_descriptor) {
-  assert(input_GT.size() == output_GT.size());
-  auto should_store_phase_information = length_descriptor.contains_phase_information();
-  auto step = should_store_phase_information ? 2u : 1u;
-  for (auto i=0u; i<input_GT.size(); i+=step) {
-    if (is_tiledb_missing_value<int>(input_GT[i]) || input_GT[i] == -1 || is_bcf_missing_value<int>(input_GT[i]))
-      output_GT[i] = input_GT[i];
-    else {
-      auto output_allele_idx = alleles_LUT.get_merged_idx_for_input(input_call_idx, input_GT[i]);
-      if (alleles_LUT.is_missing_value(output_allele_idx)) {
-        if (NON_REF_exists) {
-          assert(num_merged_alleles >= 2u);
-          output_GT[i] = num_merged_alleles-1u;
+  try{
+    assert(input_GT.size() == output_GT.size());
+    auto should_store_phase_information = length_descriptor.contains_phase_information();
+    auto step = should_store_phase_information ? 2u : 1u;
+    for (auto i=0u; i<input_GT.size(); i+=step) {
+      if (is_tiledb_missing_value<int>(input_GT[i]) || input_GT[i] == -1 || is_bcf_missing_value<int>(input_GT[i]))
+        output_GT[i] = input_GT[i];
+      else {
+        auto output_allele_idx = alleles_LUT.get_merged_idx_for_input(input_call_idx, input_GT[i]);
+        if (alleles_LUT.is_missing_value(output_allele_idx)) {
+          if (NON_REF_exists) {
+            assert(num_merged_alleles >= 2u);
+            output_GT[i] = num_merged_alleles-1u;
+          } else
+            output_GT[i] = -1; //missing allele idx
         } else
-          output_GT[i] = -1; //missing allele idx
-      } else
-        output_GT[i] = output_allele_idx;
+          output_GT[i] = output_allele_idx;
+      }
+      if (should_store_phase_information && i+1u<input_GT.size())
+        output_GT[i+1u] = input_GT[i+1u];
     }
-    if (should_store_phase_information && i+1u<input_GT.size())
-      output_GT[i+1u] = input_GT[i+1u];
+  }catch(...){
+    GENOMICSDB_ERROR(std::string("Error remapping genotype field: "), \
+      std::string("non-diploid genotype found %d", input_GT.size()), std::string("TODO"));
   }
 }
 
@@ -295,14 +301,19 @@ void  VariantOperations::do_dummy_genotyping(Variant& variant, std::ostream& out
     if (num_calls_with_valid_data[i] == 0ull)
       median_vector[i] = bcf_int32_missing;
     else {
-      auto& curr_PL_vector = remapped_PLs.get()[i];
-      auto dec_order_median_idx = (num_calls_with_valid_data[i])/2;
-      //auto inc_order_median_idx = num_calls_with_valid_data[i])/2;
-      std::nth_element(curr_PL_vector.begin(), curr_PL_vector.begin() + dec_order_median_idx, curr_PL_vector.end(), std::greater<int>());
-      //std::nth_element(curr_PL_vector.begin(), curr_PL_vector.begin() + inc_order_median_idx, curr_PL_vector.end());
-      median_vector[i] = curr_PL_vector[dec_order_median_idx];
-      //median_vector[i] = curr_PL_vector[inc_order_median_idx];
-      assert(median_vector[i] != bcf_int32_missing);
+      try{
+        auto& curr_PL_vector = remapped_PLs.get()[i];
+        auto dec_order_median_idx = (num_calls_with_valid_data[i])/2;
+        //auto inc_order_median_idx = num_calls_with_valid_data[i])/2;
+        std::nth_element(curr_PL_vector.begin(), curr_PL_vector.begin() + dec_order_median_idx, curr_PL_vector.end(), std::greater<int>());
+        //std::nth_element(curr_PL_vector.begin(), curr_PL_vector.begin() + inc_order_median_idx, curr_PL_vector.end());
+        median_vector[i] = curr_PL_vector[dec_order_median_idx];
+        //median_vector[i] = curr_PL_vector[inc_order_median_idx];
+        assert(median_vector[i] != bcf_int32_missing);
+      }catch(...){
+        GENOMICSDB_ERROR(std::string("Error calculating PL field: "), \
+          std::string("calls with invalid data present"), std::string("TODO"));
+      }
     }
   output << variant.get_column_begin() << ",";
   output << merged_reference_allele;

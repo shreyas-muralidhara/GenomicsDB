@@ -30,6 +30,7 @@
 #include "tiledb_loader_text_file.h"
 #include "vcf.h"
 #include "variant_field_data.h"
+#include "error.h"
 
 #define VERIFY_OR_THROW(X) if(!(X)) throw LineBasedTextFileException(#X);
 
@@ -104,47 +105,52 @@ CSV2TileDBBinary::CSV2TileDBBinary(const std::string& filename,
   m_cleanup_file = false;
   auto file_type = 0u;
   auto status = vid_mapper.get_file_type(filename, file_type);
-  if (!status)
-    throw LineBasedTextFileException(std::string("Could not find an entry for file ")+filename);
-  //Sort CSV
-  if (file_type == VidFileTypeEnum::UNSORTED_CSV_FILE_TYPE) {
-    auto unsorted_fptr = fopen(filename.c_str(), "r");
-    //File doesn't exist
-    if (unsorted_fptr == 0)
-      throw LineBasedTextFileException(std::string("Could not open file ")+filename);
-    fclose(unsorted_fptr);
-    auto sorted_filename = strdup((g_tmp_scratch_dir+"/sorted_csv_XXXXXX").c_str());
-    if (sorted_filename == 0)
-      throw LineBasedTextFileException("Memory allocation failed in strdup");
-    assert(sorted_filename);
-    auto fd = mkstemp(sorted_filename);
-    if (fd == -1) {
+  try{
+    if (!status)
+      throw LineBasedTextFileException(std::string("Could not find an entry for file ")+filename);
+    //Sort CSV
+    if (file_type == VidFileTypeEnum::UNSORTED_CSV_FILE_TYPE) {
+      auto unsorted_fptr = fopen(filename.c_str(), "r");
+      //File doesn't exist
+      if (unsorted_fptr == 0)
+        throw LineBasedTextFileException(std::string("Could not open file ")+filename);    
+      fclose(unsorted_fptr);
+      auto sorted_filename = strdup((g_tmp_scratch_dir+"/sorted_csv_XXXXXX").c_str());
+      if (sorted_filename == 0)
+        throw LineBasedTextFileException("Memory allocation failed in strdup");
+      assert(sorted_filename);
+      auto fd = mkstemp(sorted_filename);
+      if (fd == -1) {
+        free(sorted_filename);
+        throw LineBasedTextFileException(std::string("Could not create sorted file in temporary directory ")+g_tmp_scratch_dir+" for file "+filename);
+      }
+      close(fd);
+      if (g_tmp_scratch_dir.length() > 16384u) {
+        free(sorted_filename);
+        throw LineBasedTextFileException(std::string("Cannot handle tmp directory path greater than 16K chars in length"));
+      }
+      assert(g_tmp_scratch_dir.length() <= 16384u);
+      auto cmd_string = std::string("sort -T ")+g_tmp_scratch_dir+" -t, -k2,2n -k1,1n -o "+sorted_filename+" "+filename;
+      auto fptr = popen(cmd_string.c_str(), "r");
+      if (fptr == 0) {
+        free(sorted_filename);
+        throw LineBasedTextFileException(std::string("Sort failed for file ")+filename);
+      }
+      auto status = pclose(fptr);
+      if (status != 0) {
+        free(sorted_filename);
+        throw LineBasedTextFileException(std::string("Sort failed for file ")+filename);
+      }
+      m_filename = sorted_filename;
       free(sorted_filename);
-      throw LineBasedTextFileException(std::string("Could not create sorted file in temporary directory ")+g_tmp_scratch_dir+" for file "+filename);
+      m_cleanup_file = true;
     }
-    close(fd);
-    if (g_tmp_scratch_dir.length() > 16384u) {
-      free(sorted_filename);
-      throw LineBasedTextFileException(std::string("Cannot handle tmp directory path greater than 16K chars in length"));
-    }
-    assert(g_tmp_scratch_dir.length() <= 16384u);
-    auto cmd_string = std::string("sort -T ")+g_tmp_scratch_dir+" -t, -k2,2n -k1,1n -o "+sorted_filename+" "+filename;
-    auto fptr = popen(cmd_string.c_str(), "r");
-    if (fptr == 0) {
-      free(sorted_filename);
-      throw LineBasedTextFileException(std::string("Sort failed for file ")+filename);
-    }
-    auto status = pclose(fptr);
-    if (status != 0) {
-      free(sorted_filename);
-      throw LineBasedTextFileException(std::string("Sort failed for file ")+filename);
-    }
-    m_filename = sorted_filename;
-    free(sorted_filename);
-    m_cleanup_file = true;
+    //Initialize partition info
+    initialize_base_column_partitions(partition_bounds);
+  }catch(LineBasedTextFileException& e){
+    GENOMICSDB_ERROR(std::string("Error associated with vid mapping file: "), \
+      std::string(e.what()), std::string(""));
   }
-  //Initialize partition info
-  initialize_base_column_partitions(partition_bounds);
 }
 
 CSV2TileDBBinary::~CSV2TileDBBinary() {
