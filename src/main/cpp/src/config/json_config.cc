@@ -52,7 +52,7 @@ rapidjson::Document parse_json_file(const std::string& filename) {
     }
     return json_doc;
   }catch(GenomicsDBConfigException& e){
-    GENOMICSDB_ERROR(std::string("Error reading JSON file: "), std::string(e.what()), std::string("TODO"));
+    GENOMICSDB_ERROR(std::string("Error reading JSON file: "), std::string(e.what()));
   }
 }
 

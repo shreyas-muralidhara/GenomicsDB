@@ -149,7 +149,7 @@ CSV2TileDBBinary::CSV2TileDBBinary(const std::string& filename,
     initialize_base_column_partitions(partition_bounds);
   }catch(LineBasedTextFileException& e){
     GENOMICSDB_ERROR(std::string("Error associated with vid mapping file: "), \
-      std::string(e.what()), std::string(""));
+      std::string(e.what()));
   }
 }
 

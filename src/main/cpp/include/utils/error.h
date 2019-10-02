@@ -31,7 +31,7 @@
 
 #define PRINT_ERROR(x) std::cerr << x << std::endl
 
-#define SYSTEM_ERROR(PREFIX, MSG, PATH, GENOMICSDB_MSG)              \
+#define SYSTEM_ERROR(PREFIX, MSG, PATH)                              \
   do {                                                               \
     std::string errmsg = PREFIX + "(" + __func__ + ") " + MSG;       \
     std::string errpath = PATH;                                      \
@@ -43,27 +43,22 @@
     }                                                                \
     PRINT_ERROR(errmsg);                                             \
     errno = 0;                                                       \
-    GENOMICSDB_MSG = errmsg;                                         \
   } while (false)
 
-#define GENOMICSDB_ERROR(PREFIX, MSG, GENOMICSDB_MSG)                \
+#define GENOMICSDB_ERROR(PREFIX, MSG)                                \
   do {                                                               \
     std::string errmsg = PREFIX + "(" + __func__ + ") " + MSG;       \
     PRINT_ERROR(errmsg);                                             \
-    GENOMICSDB_MSG = errmsg;                                         \
   } while (false)
 
 void reset_errno();
 
-#define GENOMICSDB_INFO(PREFIX, MSG, GENOMICSDB_MSG)                \
+#define GENOMICSDB_INFO(PREFIX, MSG)                                \
   do {                                                              \
     std::string infomsg = PREFIX + "(" + __func__ + ") " + MSG;     \
     PRINT_ERROR(infomsg);                                            \
-    GENOMICSDB_MSG = infomsg;                                       \
   } while (false)
 
 void reset_errno();
-
-
 
 #endif /* GENOMICSDB_ERROR_H */

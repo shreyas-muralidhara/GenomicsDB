@@ -212,30 +212,25 @@ void VariantOperations::merge_alt_alleles(const Variant& variant,
 void VariantOperations::remap_GT_field(const std::vector<int>& input_GT, std::vector<int>& output_GT,
                                        const CombineAllelesLUT& alleles_LUT, const uint64_t input_call_idx, const unsigned num_merged_alleles, const bool NON_REF_exists,
                                        const FieldLengthDescriptor& length_descriptor) {
-  try{
-    assert(input_GT.size() == output_GT.size());
-    auto should_store_phase_information = length_descriptor.contains_phase_information();
-    auto step = should_store_phase_information ? 2u : 1u;
-    for (auto i=0u; i<input_GT.size(); i+=step) {
-      if (is_tiledb_missing_value<int>(input_GT[i]) || input_GT[i] == -1 || is_bcf_missing_value<int>(input_GT[i]))
-        output_GT[i] = input_GT[i];
-      else {
-        auto output_allele_idx = alleles_LUT.get_merged_idx_for_input(input_call_idx, input_GT[i]);
-        if (alleles_LUT.is_missing_value(output_allele_idx)) {
-          if (NON_REF_exists) {
-            assert(num_merged_alleles >= 2u);
-            output_GT[i] = num_merged_alleles-1u;
-          } else
-            output_GT[i] = -1; //missing allele idx
+  assert(input_GT.size() == output_GT.size());
+  auto should_store_phase_information = length_descriptor.contains_phase_information();
+  auto step = should_store_phase_information ? 2u : 1u;
+  for (auto i=0u; i<input_GT.size(); i+=step) {
+    if (is_tiledb_missing_value<int>(input_GT[i]) || input_GT[i] == -1 || is_bcf_missing_value<int>(input_GT[i]))
+      output_GT[i] = input_GT[i];
+    else {
+      auto output_allele_idx = alleles_LUT.get_merged_idx_for_input(input_call_idx, input_GT[i]);
+      if (alleles_LUT.is_missing_value(output_allele_idx)) {
+        if (NON_REF_exists) {
+          assert(num_merged_alleles >= 2u);
+          output_GT[i] = num_merged_alleles-1u;
         } else
-          output_GT[i] = output_allele_idx;
-      }
-      if (should_store_phase_information && i+1u<input_GT.size())
-        output_GT[i+1u] = input_GT[i+1u];
+          output_GT[i] = -1; //missing allele idx
+      } else
+        output_GT[i] = output_allele_idx;
     }
-  }catch(...){
-    GENOMICSDB_ERROR(std::string("Error remapping genotype field: "), \
-      std::string("non-diploid genotype found %d", input_GT.size()), std::string("TODO"));
+    if (should_store_phase_information && i+1u<input_GT.size())
+      output_GT[i+1u] = input_GT[i+1u];
   }
 }
 
@@ -312,7 +307,7 @@ void  VariantOperations::do_dummy_genotyping(Variant& variant, std::ostream& out
         assert(median_vector[i] != bcf_int32_missing);
       }catch(...){
         GENOMICSDB_ERROR(std::string("Error calculating PL field: "), \
-          std::string("calls with invalid data present"), std::string("TODO"));
+          std::string("calls with invalid data present"));
       }
     }
   output << variant.get_column_begin() << ",";
