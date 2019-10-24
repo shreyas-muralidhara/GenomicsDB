@@ -35,94 +35,85 @@
 
 const char* g_json_indent_unit = "    ";
 
-// this need fixed
 rapidjson::Document parse_json_file(const std::string& filename) {
-  try{
-    VERIFY_OR_THROW(filename.length() && "vid/callset mapping file unspecified");
-    char *json_buffer = 0;
-    size_t json_buffer_length;
-    if (TileDBUtils::read_entire_file(filename, (void **)&json_buffer, &json_buffer_length) != TILEDB_OK || !json_buffer || json_buffer_length == 0) {
-      free(json_buffer);
-      throw GenomicsDBConfigException((std::string("Could not open vid/callset mapping file \"")+filename+"\"").c_str());
-    }
-    rapidjson::Document json_doc;
-    json_doc.Parse(json_buffer);
+  VERIFY_OR_THROW(filename.length() && "vid/callset mapping file unspecified");
+  char *json_buffer = 0;
+  size_t json_buffer_length;
+  if (TileDBUtils::read_entire_file(filename, (void **)&json_buffer, &json_buffer_length) != TILEDB_OK || !json_buffer || json_buffer_length == 0) {
     free(json_buffer);
-    if (json_doc.HasParseError()) {
-      throw GenomicsDBConfigException(std::string("Syntax error in JSON file ")+filename);
-    }
-    return json_doc;
-  }catch(GenomicsDBConfigException& e){
-    GENOMICSDB_ERROR(std::string("Error reading JSON file: "), std::string(e.what()));
+    GENOMICSDB_ERROR(std::string("Syntax error in JSON: "), std::string("could not open vid/callset mapping file."));
+    throw GenomicsDBConfigException((std::string("Could not open vid/callset mapping file \"")+filename+"\"").c_str());
   }
+  rapidjson::Document json_doc;
+  json_doc.Parse(json_buffer);
+  free(json_buffer);
+  if (json_doc.HasParseError()) {
+    GENOMICSDB_ERROR(std::string("Syntax error in JSON: "), std::string("could not parse json."));
+    throw GenomicsDBConfigException(std::string("Syntax error in JSON file ")+filename);
+  }
+  return json_doc;
 }
 
 void extract_contig_interval_from_object(const rapidjson::Value& curr_json_object,
     const VidMapper* id_mapper, ColumnRange& result) {
-  try{
-    // This MUST be a dictionary of the form "contig" : position or "contig" : [start, end]
-    VERIFY_OR_THROW(curr_json_object.IsObject());
-    VERIFY_OR_THROW(curr_json_object.MemberCount() == 1);
-    auto itr = curr_json_object.MemberBegin();
-    std::string contig_name = itr->name.GetString();
-    const rapidjson::Value* contig_position_ptr = 0;
-    if (contig_name == "contig_position") { // Produced by PB
-      VERIFY_OR_THROW(itr->value.IsObject());
-      auto& pb_contig_position_dict = itr->value;
-      VERIFY_OR_THROW(pb_contig_position_dict.MemberCount() == 2);
-      VERIFY_OR_THROW(pb_contig_position_dict.HasMember("contig")
-                    && pb_contig_position_dict["contig"].IsString()
-                    && pb_contig_position_dict.HasMember("position")
-                    && pb_contig_position_dict["position"].IsInt64());
-      contig_name = pb_contig_position_dict["contig"].GetString();
-      contig_position_ptr = &(pb_contig_position_dict["position"]);
-    } else
-      contig_position_ptr = &(itr->value);
-    ContigInfo contig_info;
-    VERIFY_OR_THROW(id_mapper != 0 && id_mapper->is_initialized());
-    if (!id_mapper->get_contig_info(contig_name, contig_info))
-      throw VidMapperException("GenomicsDBConfigBase::read_from_file: Invalid contig name : " + contig_name);
-    const rapidjson::Value& contig_position = *contig_position_ptr;
-    if (contig_position.IsArray()) {
-      VERIFY_OR_THROW(contig_position.Size() == 2);
-      VERIFY_OR_THROW(contig_position[0u].IsInt64());
-      VERIFY_OR_THROW(contig_position[1u].IsInt64());
-      result = GenomicsDBConfigBase::verify_contig_position_and_get_tiledb_column_interval(contig_info,
-             contig_position[0u].GetInt64(), contig_position[1u].GetInt64());
-    } else { // single position
-      VERIFY_OR_THROW(contig_position.IsInt64());
-      auto contig_position_int = contig_position.GetInt64();
-      result = GenomicsDBConfigBase::verify_contig_position_and_get_tiledb_column_interval(contig_info,
-             contig_position_int, contig_position_int);
-    }
-  }catch(GenomicsDBConfigException& e){
-    GENOMICSDB_ERROR(std::string("Error verifying contig interval: "), std::string(e.what()));
+
+  // This MUST be a dictionary of the form "contig" : position or "contig" : [start, end]
+  VERIFY_OR_THROW(curr_json_object.IsObject());
+  VERIFY_OR_THROW(curr_json_object.MemberCount() == 1);
+  auto itr = curr_json_object.MemberBegin();
+  std::string contig_name = itr->name.GetString();
+  const rapidjson::Value* contig_position_ptr = 0;
+  if (contig_name == "contig_position") { // Produced by PB
+    VERIFY_OR_THROW(itr->value.IsObject());
+    auto& pb_contig_position_dict = itr->value;
+    VERIFY_OR_THROW(pb_contig_position_dict.MemberCount() == 2);
+    VERIFY_OR_THROW(pb_contig_position_dict.HasMember("contig")
+                  && pb_contig_position_dict["contig"].IsString()
+                  && pb_contig_position_dict.HasMember("position")
+                  && pb_contig_position_dict["position"].IsInt64());
+    contig_name = pb_contig_position_dict["contig"].GetString();
+    contig_position_ptr = &(pb_contig_position_dict["position"]);
+  } else
+    contig_position_ptr = &(itr->value);
+  ContigInfo contig_info;
+  VERIFY_OR_THROW(id_mapper != 0 && id_mapper->is_initialized());
+  if (!id_mapper->get_contig_info(contig_name, contig_info))
+    throw VidMapperException("GenomicsDBConfigBase::read_from_file: Invalid contig name : " + contig_name);
+  const rapidjson::Value& contig_position = *contig_position_ptr;
+  if (contig_position.IsArray()) {
+    VERIFY_OR_THROW(contig_position.Size() == 2);
+    VERIFY_OR_THROW(contig_position[0u].IsInt64());
+    VERIFY_OR_THROW(contig_position[1u].IsInt64());
+    result = GenomicsDBConfigBase::verify_contig_position_and_get_tiledb_column_interval(contig_info,
+           contig_position[0u].GetInt64(), contig_position[1u].GetInt64());
+  } else { // single position
+    VERIFY_OR_THROW(contig_position.IsInt64());
+    auto contig_position_int = contig_position.GetInt64();
+    result = GenomicsDBConfigBase::verify_contig_position_and_get_tiledb_column_interval(contig_info,
+           contig_position_int, contig_position_int);
   }
+
 }
 
 // control warning here -- TODO
 ColumnRange parse_contig_interval_object(const rapidjson::Value& interval_object, const VidMapper* id_mapper)
 {
-  try{
-    VERIFY_OR_THROW(interval_object.IsObject());
-    VERIFY_OR_THROW(interval_object.HasMember("contig"));
-    ContigInfo contig_info;
-    auto contig_name = interval_object["contig"].GetString();
-    if (!id_mapper->get_contig_info(contig_name, contig_info))
-      throw VidMapperException(std::string("GenomicsDBConfigBase::read_from_file: Invalid contig name : %d", contig_name));
-    if(interval_object.HasMember("end") && !interval_object.HasMember("begin"))
-      throw GenomicsDBConfigException("Contig interval cannot have end without defining begin");
-    int64_t begin  = interval_object.HasMember("begin")
-      ? interval_object["begin"].GetInt64() : 1;
-    int64_t end = interval_object.HasMember("end")
-      ? interval_object["end"].GetInt64()
-      : (interval_object.HasMember("begin") ? begin : contig_info.m_length);
-    return GenomicsDBConfigBase::verify_contig_position_and_get_tiledb_column_interval(contig_info, begin, end);
-  }catch(VidMapperException& e){
-    GENOMICSDB_ERROR(std::string("Issue reading contig interval from vid mapper: "), std::string(e.what()));
-  }catch(GenomicsDBConfigException& e){
-    GENOMICSDB_ERROR(std::string("Issue reading contig interval: "), std::string(e.what()));
-  }
+  VERIFY_OR_THROW(interval_object.IsObject());
+  VERIFY_OR_THROW(interval_object.HasMember("contig"));
+  ContigInfo contig_info;
+  auto contig_name = interval_object["contig"].GetString();
+  if (!id_mapper->get_contig_info(contig_name, contig_info))
+    GENOMICSDB_ERROR(std::string("Issue reading contig interval from vid mapper: "), std::string("invalid contig name"));
+    throw VidMapperException(std::string("GenomicsDBConfigBase::read_from_file: Invalid contig name : %d", contig_name));
+  if(interval_object.HasMember("end") && !interval_object.HasMember("begin"))
+    GENOMICSDB_ERROR(std::string("Issue reading contig interval: "), std::string("invalid contig interval"));
+    throw GenomicsDBConfigException("Contig interval cannot have end without defining begin");
+  int64_t begin  = interval_object.HasMember("begin")
+    ? interval_object["begin"].GetInt64() : 1;
+  int64_t end = interval_object.HasMember("end")
+    ? interval_object["end"].GetInt64()
+    : (interval_object.HasMember("begin") ? begin : contig_info.m_length);
+  return GenomicsDBConfigBase::verify_contig_position_and_get_tiledb_column_interval(contig_info, begin, end);
 }
 
 //JSON produced by Protobuf - { "low":<>, "high":<> }
