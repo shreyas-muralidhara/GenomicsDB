@@ -400,18 +400,21 @@ if(BUILD_JAVA)
         ./src/main/java/org/genomicsdb/reader/GenomicsDBFeatureReader.java
         ./src/main/java/org/genomicsdb/reader/GenomicsDBQueryStream.java
         ./src/main/java/org/genomicsdb/reader/GenomicsDBTimer.java
+        ./src/main/java/org/genomicsdb/spark/AbstractGenomicsDBInputFormat.java
         ./src/main/java/org/genomicsdb/spark/GenomicsDBConfiguration.java
         ./src/main/java/org/genomicsdb/spark/GenomicsDBInputFormat.java
         ./src/main/java/org/genomicsdb/spark/GenomicsDBInputSplit.java
         ./src/main/java/org/genomicsdb/spark/GenomicsDBJavaSparkFactory.java
         ./src/main/java/org/genomicsdb/spark/GenomicsDBPartitionInfo.java
         ./src/main/java/org/genomicsdb/spark/GenomicsDBRecordReader.java
-	./src/main/java/org/genomicsdb/spark/GenomicsDBQueryInfo.java
-	./src/main/java/org/genomicsdb/spark/GenomicsDBDataSourceV2.java
-	./src/main/java/org/genomicsdb/spark/GenomicsDBDataSourceReader.java
-	./src/main/java/org/genomicsdb/spark/GenomicsDBInputPartition.java
-	./src/main/java/org/genomicsdb/spark/GenomicsDBInputPartitionReader.java
-	./src/main/java/org/genomicsdb/spark/GenomicsDBInput.java
+        ./src/main/java/org/genomicsdb/spark/GenomicsDBQueryInfo.java
+        ./src/main/java/org/genomicsdb/spark/GenomicsDBDataSourceV2.java
+        ./src/main/java/org/genomicsdb/spark/GenomicsDBDataSourceReader.java
+        ./src/main/java/org/genomicsdb/spark/GenomicsDBInputPartition.java
+        ./src/main/java/org/genomicsdb/spark/GenomicsDBInputPartitionReader.java
+        ./src/main/java/org/genomicsdb/spark/GenomicsDBInput.java
+        ./src/main/java/org/genomicsdb/spark/api/GenomicsDBQueryInputFormat.java
+        ./src/main/java/org/genomicsdb/spark/api/GenomicsDBQueryRecordReader.java
         ./src/main/java/org/genomicsdb/Constants.java
         ./src/main/java/org/genomicsdb/GenomicsDBLibLoader.java
         ./src/main/scala/org/genomicsdb/GenomicsDBContext.scala

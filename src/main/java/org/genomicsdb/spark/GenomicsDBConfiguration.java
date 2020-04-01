@@ -58,6 +58,8 @@ public class GenomicsDBConfiguration extends Configuration implements Serializab
   public static final String LOADERPB = "genomicsdb.input.loaderprotobuf";
   public static final String QUERYPB = "genomicsdb.input.queryprotobuf";
 
+  public static final String USEAPI = "genomicsdb.input.usequeryapi";
+
   private Boolean produceCombinedVCF = false;
   private Boolean produceTileDBArray = false;
   private Integer segmentSize = 1000;

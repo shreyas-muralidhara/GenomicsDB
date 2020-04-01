@@ -65,7 +65,7 @@ public class GenomicsDBInput<T extends GenomicsDBInputInterface> {
     * @param maxQBS maximum query block size used for partitioning query
     * @param clazz Class object used to decide how to instantiate partitions
     */
-  GenomicsDBInput(GenomicsDBConfiguration gdbconf, StructType schema, 
+  public GenomicsDBInput(GenomicsDBConfiguration gdbconf, StructType schema,
       Map<String, GenomicsDBVidSchema> vMap, long minQBS, long maxQBS, Class<T> clazz) {
     genomicsDBConfiguration = gdbconf;
     this.clazz = clazz;
