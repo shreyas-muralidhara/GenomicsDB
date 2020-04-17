@@ -589,6 +589,10 @@ int VariantStorageManager::define_array(const VariantArraySchema* variant_array_
     &(compression[0]),
     // Compression Level
     &(compression_level[0]),
+    // Offsets compression
+    NULL,
+    // Offsets compression level
+    NULL,
     // Sparse array
     0,
     // Dimensions
