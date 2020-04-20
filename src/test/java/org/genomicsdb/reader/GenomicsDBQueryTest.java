@@ -18,6 +18,8 @@
  */
 package org.genomicsdb.reader;
 
+import org.apache.commons.io.FileUtils;
+import org.genomicsdb.GenomicsDBUtils;
 import org.genomicsdb.exception.GenomicsDBException;
 import org.genomicsdb.model.GenomicsDBExportConfiguration;
 import org.genomicsdb.reader.GenomicsDBQuery.Interval;
@@ -274,7 +276,7 @@ public class GenomicsDBQueryTest {
     File vcfFile = File.createTempFile("GenomicsDBQueryTest", "");
     File vcfIndexFile = new File(vcfFile+".tbi");
 
-    query.generateVCF(genomicsDBHandle, arrayName, columnRanges, new ArrayList<>(), vcfFile.toString(), "z", true);
+    query.generateVCF(genomicsDBHandle, arrayName, columnRanges, new ArrayList<>(), vcfFile.getAbsolutePath(), "z", true);
 
     Assert.assertTrue(vcfFile.exists());
     Assert.assertTrue(vcfFile.length() > 0);
@@ -282,13 +284,14 @@ public class GenomicsDBQueryTest {
     Assert.assertTrue(vcfIndexFile.length() > 0);
 
     try {
-      query.generateVCF(genomicsDBHandle, arrayName, columnRanges, new ArrayList<>(), vcfFile.toString(), "z", false);
+      query.generateVCF(genomicsDBHandle, arrayName, columnRanges, new ArrayList<>(), vcfFile.getAbsolutePath(), "z", false);
       Assert.fail();
     } catch (GenomicsDBException e) {
       // Expected exception
     }
 
-    vcfFile.delete();
+    GenomicsDBUtils.deleteFile(vcfFile.getAbsolutePath());
+    GenomicsDBUtils.deleteFile(vcfIndexFile.getAbsolutePath());
   }
 
   @Test
@@ -299,12 +302,15 @@ public class GenomicsDBQueryTest {
     File vcfFile = File.createTempFile("GenomicsDBQueryTest", "");
     File vcfIndexFile = new File(vcfFile+".tbi");
 
-    query.generateVCF(genomicsDBHandle, vcfFile.toString(), "z", true);
+    query.generateVCF(genomicsDBHandle, vcfFile.getAbsolutePath(), "z", true);
 
     Assert.assertTrue(vcfFile.exists());
     Assert.assertTrue(vcfFile.length() > 0);
     Assert.assertTrue(vcfIndexFile.exists());
     Assert.assertTrue(vcfIndexFile.length() > 0);
+
+    GenomicsDBUtils.deleteFile(vcfFile.getAbsolutePath());
+    GenomicsDBUtils.deleteFile(vcfIndexFile.getAbsolutePath());
   }
 
   @Test
@@ -326,11 +332,14 @@ public class GenomicsDBQueryTest {
     File vcfFile = File.createTempFile("GenomicsDBQueryTest", "");
     File vcfIndexFile = new File(vcfFile+".tbi");
 
-    query.generateVCF(genomicsDBHandle, vcfFile.toString(), "z", true);
+    query.generateVCF(genomicsDBHandle, vcfFile.getAbsolutePath(), "z", true);
 
     Assert.assertTrue(vcfFile.exists());
     Assert.assertTrue(vcfFile.length() > 0);
     Assert.assertTrue(vcfIndexFile.exists());
     Assert.assertTrue(vcfIndexFile.length() > 0);
+
+    GenomicsDBUtils.deleteFile(vcfFile.getAbsolutePath());
+    GenomicsDBUtils.deleteFile(vcfIndexFile.getAbsolutePath());
   }
 }
