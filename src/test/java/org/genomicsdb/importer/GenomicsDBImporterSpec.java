@@ -57,11 +57,9 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.LineNumberReader;
-import java.io.IOException;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 import static org.genomicsdb.Constants.CHROMOSOME_INTERVAL_FOLDER;
@@ -577,8 +575,13 @@ public final class GenomicsDBImporterSpec implements CallSetMapExtensions, VidMa
 
     @AfterMethod
     public void cleanUpAfter() throws IOException {
-        if (tempVidJsonFile.exists()) FileUtils.deleteQuietly(tempVidJsonFile);
+        if (tempVidJsonFile.exists()) FileUtils.deleteQuietly(tempVidJsonFile);//_.getName.endsWith(".txt")
         if (tempCallsetJsonFile.exists()) FileUtils.deleteQuietly(tempCallsetJsonFile);
+        File tempCallsetJsonFileOther = new File(tempCallsetJsonFile.getAbsolutePath()+".fragmentlist");
+        if (tempCallsetJsonFileOther.exists()) FileUtils.deleteQuietly(tempCallsetJsonFileOther);
+        tempCallsetJsonFileOther = new File(tempCallsetJsonFile.getAbsolutePath()+".inc.backup");
+        if (tempCallsetJsonFileOther.exists()) FileUtils.deleteQuietly(tempCallsetJsonFileOther);
+        if (tempVcfHeaderFile.exists()) FileUtils.deleteQuietly(tempVcfHeaderFile);
         if (WORKSPACE.exists()) FileUtils.deleteDirectory(WORKSPACE);
     }
 
