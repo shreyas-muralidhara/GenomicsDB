@@ -350,21 +350,24 @@ int VariantArrayInfo::get_array_column_bounds(const std::string& workspace, cons
 int VariantArrayInfo::get_max_valid_row_idx(const std::string& workspace, const std::string& array) {
   TileDB_CTX *ctx;
   // initialize ctx, and ensure that we've an existing workspace
-  if (TileDBUtils::initialize_workspace(&ctx, workspace, false) != 1)
+  if (TileDBUtils::initialize_workspace(&ctx, workspace, false) != 1) {
     return -1;
+  }
   //To read genomicsdb json entries in meta directory
-  std::vector<std::string> files = get_files(ctx, GET_METADATA_DIRECTORY(workspace, array));
   int max_valid_row_idx = 0;
-  for (const std::string& filepath: files) {
-    if (is_genomicsdb_meta_file(ctx, filepath)) {
-      char *buffer;
-      rapidjson::Document json_doc;
-      if (read_dim_bounds_kernel(ctx, &json_doc, &buffer, filepath))
-        return -1;
-      if (json_doc.HasMember("max_valid_row_idx_in_array") && json_doc["max_valid_row_idx_in_array"].IsInt64()
-          && (max_valid_row_idx < json_doc["max_valid_row_idx_in_array"].GetInt64()))
-        max_valid_row_idx = json_doc["max_valid_row_idx_in_array"].GetInt64();
-      free(buffer);
+  if (is_dir(ctx, GET_METADATA_DIRECTORY(workspace, array))) {
+    std::vector<std::string> files = get_files(ctx, GET_METADATA_DIRECTORY(workspace, array));
+    for (const std::string& filepath: files) {
+      if (is_genomicsdb_meta_file(ctx, filepath)) {
+	char *buffer;
+	rapidjson::Document json_doc;
+	if (read_dim_bounds_kernel(ctx, &json_doc, &buffer, filepath))
+	  return -1;
+	if (json_doc.HasMember("max_valid_row_idx_in_array") && json_doc["max_valid_row_idx_in_array"].IsInt64()
+	    && (max_valid_row_idx < json_doc["max_valid_row_idx_in_array"].GetInt64()))
+	  max_valid_row_idx = json_doc["max_valid_row_idx_in_array"].GetInt64();
+	free(buffer);
+      }
     }
   }
   return max_valid_row_idx;
