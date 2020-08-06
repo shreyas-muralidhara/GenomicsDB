@@ -26,7 +26,7 @@
 #
 
 project(GenomicsDB)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.4)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/Modules")
 
 if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -48,7 +48,7 @@ execute_process(
     )
 
 #Build parameters
-set(GENOMICSDB_RELEASE_VERSION "1.2.2-SNAPSHOT" CACHE STRING "GenomicsDB release version") #used in Maven builds
+set(GENOMICSDB_RELEASE_VERSION "1.3.1-SNAPSHOT" CACHE STRING "GenomicsDB release version") #used in Maven builds
 set(GENOMICSDB_VERSION "${GENOMICSDB_RELEASE_VERSION}-${GIT_COMMIT_HASH}" CACHE STRING "GenomicsDB full version string")
 set(DISABLE_MPI False CACHE BOOL "Disable use of any MPI compiler/libraries")
 set(DISABLE_OPENMP False CACHE BOOL "Disable OpenMP")
@@ -93,7 +93,6 @@ include(CheckIncludeFileCXX)
 include(CheckCXXSymbolExists)
 
 if(BUILD_DISTRIBUTABLE_LIBRARY)
-    cmake_minimum_required(VERSION 3.4)
     set(DISABLE_MPI True)
     set(DISABLE_OPENMP True)
     #For the GNU compiler, link in static gcc libraries
@@ -162,7 +161,11 @@ find_package(libuuid REQUIRED)
 include_directories(${LIBUUID_INCLUDE_DIR})
 
 if(ENABLE_LIBCURL)
-    find_package(CURL REQUIRED)
+  if(BUILD_DISTRIBUTABLE_LIBRARY)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+  endif()
+  find_package(OpenSSL REQUIRED)
+  find_package(CURL REQUIRED)
 endif()
 
 #RapidJSON
@@ -175,7 +178,7 @@ include_directories(${SPDLOG_INCLUDE_DIR})
 
 #htslib
 find_package(htslib REQUIRED)
-include_directories(${HTSLIB_INCLUDE_DIR})
+include_directories(BEFORE ${HTSLIB_INCLUDE_DIR})
 
 #TileDB
 find_package(TileDB REQUIRED)
@@ -320,6 +323,9 @@ if(MPI_FOUND)
 endif()
 if(USE_HDFS)
     set(GENOMICSDB_EXTERNAL_DEPENDENCIES_LIBRARIES ${GENOMICSDB_EXTERNAL_DEPENDENCIES_LIBRARIES} ${JAVA_JVM_LIBRARY})
+endif()
+if(OPENSSL_FOUND)
+    set(GENOMICSDB_EXTERNAL_DEPENDENCIES_LIBRARIES ${GENOMICSDB_EXTERNAL_DEPENDENCIES_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
 if(CURL_FOUND)
     set(GENOMICSDB_EXTERNAL_DEPENDENCIES_LIBRARIES ${GENOMICSDB_EXTERNAL_DEPENDENCIES_LIBRARIES} ${CURL_LIBRARIES})
@@ -487,6 +493,7 @@ if(BUILD_JAVA)
 
     add_jar(genomicsdb-${GENOMICSDB_RELEASE_VERSION}-examples
         SOURCES ${GENOMICSDB_EXAMPLE_SOURCES}
+                log4j.properties
         INCLUDE_JARS ${GENOMICSDB_MAVEN_BUILD_DIR}/genomicsdb-${GENOMICSDB_RELEASE_VERSION}-allinone.jar
         OUTPUT_DIR ${GENOMICSDB_MAVEN_BUILD_DIR})
 
@@ -501,6 +508,10 @@ if(BUILD_JAVA)
         COMMENT "Deploy to Maven central"
     )
     add_dependencies(mvn_central_deploy genomicsdb-${GENOMICSDB_RELEASE_VERSION}-examples)
+
+    add_custom_target(mvn_local_deploy
+            COMMAND mvn install:install-file -Dfile=target/genomicsdb-${GENOMICSDB_RELEASE_VERSION}.jar -DpomFile=pom.xml)
+    add_dependencies(mvn_local_deploy genomicsdb-${GENOMICSDB_RELEASE_VERSION}-examples)
 
     if(NOT DISABLE_MPI)
         add_test(NAME CI_tests
